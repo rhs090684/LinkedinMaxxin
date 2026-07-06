@@ -11,7 +11,7 @@ const GAMMA_BASE = "https://gamma-api.polymarket.com";
 const CLOB_BASE = "https://clob.polymarket.com";
 const DATA_BASE = "https://data-api.polymarket.com";
 
-async function getJson(url: string, timeoutMs = 12_000): Promise<unknown> {
+async function getJson(url: string, timeoutMs = 6_000): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

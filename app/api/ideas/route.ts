@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scanLive, scanMock, type ScanOptions } from "@/lib/scan";
 
-// Run on the Node.js runtime (not edge) so we get generous outbound fetch
-// and up to 60s to scan many markets.
+// Run on the Node.js runtime (not edge) for unrestricted outbound fetch.
+// maxDuration is 10s because that is the hard cap on Vercel's Hobby (free)
+// plan - a larger value fails the deployment. The scan is time-budgeted in
+// lib/scan.ts to return whatever it has before this limit. On a Pro plan you
+// can raise this to 60 and bump the `markets` query param for a deeper scan.
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 10;
 export const dynamic = "force-dynamic";
 
 function num(v: string | null, fallback: number): number {

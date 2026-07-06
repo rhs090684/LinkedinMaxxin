@@ -24,18 +24,24 @@ export interface ScanOptions {
   minScore?: number;
   top?: number;
   concurrency?: number;
+  // Wall-clock budget (ms) for the whole live scan. Kept under the Vercel
+  // function limit so we return partial results instead of a 504 timeout.
+  budgetMs?: number;
 }
 
 export async function scanLive(opts: ScanOptions = {}): Promise<ScanResult> {
   const tag = opts.tag ?? "sports";
-  const events = opts.events ?? 25;
-  const maxMarkets = opts.markets ?? 18;
+  const events = opts.events ?? 20;
+  const maxMarkets = opts.markets ?? 10;
   const windowHours = opts.windowHours ?? 24;
   const minVolume = opts.minVolume ?? 1_000;
   const minScore = opts.minScore ?? 30;
   const top = opts.top ?? 20;
-  const concurrency = opts.concurrency ?? 6;
+  // Scan every selected market in one parallel batch by default.
+  const concurrency = opts.concurrency ?? maxMarkets;
+  const budgetMs = opts.budgetMs ?? 8_000;
 
+  const deadline = Date.now() + budgetMs;
   const errors: string[] = [];
   let markets = await getMarkets(tag, events);
   markets = markets
@@ -43,7 +49,10 @@ export async function scanLive(opts: ScanOptions = {}): Promise<ScanResult> {
     .sort((a, b) => b.volume24h - a.volume24h)
     .slice(0, maxMarkets);
 
+  let scanned = 0;
   const perMarket = await mapPool(markets, concurrency, async (market) => {
+    // Skip markets we can no longer finish before the function is killed.
+    if (Date.now() > deadline) return [] as TradeIdea[];
     const token0 = market.clobTokenIds[0];
     try {
       const [book, trades, history] = await Promise.all([
@@ -51,6 +60,7 @@ export async function scanLive(opts: ScanOptions = {}): Promise<ScanResult> {
         getTrades(market.conditionId),
         getPriceHistory(token0),
       ]);
+      scanned++;
       const liq = computeLiquidity(book);
       const flow = computeFlow(trades, token0, {
         windowHours,
@@ -66,7 +76,7 @@ export async function scanLive(opts: ScanOptions = {}): Promise<ScanResult> {
   const ideas = rankIdeas(perMarket.flat(), minScore, top);
   return {
     generatedAt: new Date().toISOString(),
-    marketsScanned: markets.length,
+    marketsScanned: scanned,
     source: "live",
     disclaimer: DISCLAIMER,
     ideas,
