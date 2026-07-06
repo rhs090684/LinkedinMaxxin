@@ -1,8 +1,8 @@
 # Polymarket Sports Trade Idea Generator
 
-Scans active **sports markets on Polymarket** and generates ranked trade ideas from
-**orderflow** (recent taker trades) and **liquidity** (order book depth) data, using
-Polymarket's three public read-only APIs:
+A **Next.js web app** (deployable to Vercel) that scans active **sports markets on
+Polymarket** and generates ranked trade ideas from **orderflow** (recent taker trades)
+and **liquidity** (order-book depth) data, using Polymarket's three public read-only APIs:
 
 | API | Base URL | Used for |
 |-----|----------|----------|
@@ -12,35 +12,30 @@ Polymarket's three public read-only APIs:
 
 No API key is required — all endpoints are public.
 
-## Install & run
+## Deploy to Vercel
+
+The repo is a standard Next.js app at its root, so Vercel auto-detects everything:
+
+1. Push this branch to GitHub (already done).
+2. Go to [vercel.com/new](https://vercel.com/new) and **import** `rhs090684/LinkedinMaxxin`.
+3. Framework preset **Next.js** is detected automatically — no build settings, no env vars needed.
+4. Click **Deploy**. Every future push to the repo redeploys via Vercel's GitHub app.
+
+The idea scan runs in a Node.js serverless function (`app/api/ideas/route.ts`,
+`maxDuration = 60`) which calls the Polymarket APIs server-side at request time.
+
+## Run locally
 
 ```bash
-pip install -r requirements.txt
-
-# Scan the whole sports tag (top markets by 24h volume)
-python -m polymarket_ideas
-
-# League-specific scan, JSON report
-python -m polymarket_ideas --tag nba --events 30 --output json --out-file ideas.json
-
-# Offline demo on synthetic data (no network needed)
-python -m polymarket_ideas --mock
+npm install
+npm run dev        # http://localhost:3000
+npm run build      # production build
+npm test           # TypeScript test suite (node:test via tsx)
 ```
 
-### Options
-
-```
---tag         Gamma tag slug: sports, nba, nfl, mlb, epl, ... (default: sports)
---events      Max events to pull from Gamma (default: 25)
---markets     Max markets (by 24h volume) to deep-scan (default: 40)
---window      Orderflow lookback in hours (default: 24)
---min-volume  Skip markets under this 24h volume (default: 1000)
---min-score   Minimum idea score to display, 0-100 (default: 30)
---top         Max ideas to show (default: 15)
---output      console | json | md (default: console)
---out-file    Also write the report to a file
---mock        Run on deterministic synthetic data, no network
-```
+The dashboard has a **Demo data** toggle that uses a deterministic synthetic universe,
+so it renders even without network access to Polymarket (e.g. in a sandbox). If a live
+scan fails, the API automatically falls back to demo data and shows a banner.
 
 ## How it works
 
@@ -67,19 +62,55 @@ Filters: near-resolved markets (mid outside 5–95¢), thin books (< $1k within 
 and quiet tapes (< $2k taker flow) never generate directional ideas. Each idea includes
 a sizing guide capped at 10% of near-mid depth so the idea itself doesn't eat the book.
 
+### API endpoint
+
+`GET /api/ideas` returns the ranked ideas as JSON. Query params:
+
+```
+tag        sports | nba | nfl | mlb | nhl | epl | soccer | tennis   (default: sports)
+events     max events to pull from Gamma          (default: 25)
+markets    max markets to deep-scan               (default: 18)
+window     orderflow lookback in hours            (default: 24)
+minVolume  skip markets under this 24h volume      (default: 1000)
+minScore   minimum idea score to return, 0-100     (default: 30)
+top        max ideas to return                     (default: 20)
+source     set to "mock" to force demo data
+```
+
 ## Project layout
 
 ```
-polymarket_ideas/
-  api.py        # Gamma / CLOB / Data API clients (retries, throttling)
-  models.py     # Market, OrderBook, Trade, TradeIdea containers + payload parsing
-  metrics.py    # liquidity + orderflow metric computation
-  ideas.py      # signal logic, scoring, ranking
-  report.py     # console / JSON / markdown rendering
-  mock_data.py  # deterministic synthetic universe for --mock and tests
-  cli.py        # argparse CLI and scan pipeline
-tests/          # 18 unit + end-to-end tests (run: python -m pytest)
+app/
+  page.tsx           # dashboard UI (client component)
+  layout.tsx         # root layout
+  globals.css        # dark trading-dashboard styles
+  api/ideas/route.ts # serverless scan endpoint (Node.js runtime)
+lib/
+  types.ts           # shared types
+  parse.ts           # Gamma/CLOB/Data payload parsing + book helpers
+  polymarket.ts      # API clients + concurrency pool
+  metrics.ts         # liquidity + orderflow metric computation
+  ideas.ts           # signal logic, scoring, ranking
+  mock.ts            # deterministic synthetic universe for demo/tests
+  scan.ts            # scan orchestration (live + mock)
+test/                # node:test suite for the engine
+
+polymarket_ideas/    # original Python CLI (still runnable; see below)
+tests/               # pytest suite for the Python version
 ```
+
+## Python CLI (original version)
+
+The first cut of this project was a Python CLI, still included and functional:
+
+```bash
+pip install -r requirements.txt
+python -m polymarket_ideas --tag nba          # live scan
+python -m polymarket_ideas --mock             # offline demo
+python -m pytest tests/                        # 18 tests
+```
+
+Vercel ignores the Python package and builds only the Next.js app.
 
 ## Disclaimer
 
